@@ -298,13 +298,20 @@ if prompt := st.chat_input("Digite sua solicitação de análise..."):
         response_placeholder = st.empty()
         full_response = ""
         
-        # Gerar resposta em streaming
-        for chunk in model.generate_content(full_context, stream=True):
-            if chunk.text:
-                full_response += chunk.text
-                # Atualizar a resposta com tooltips em tempo real
-                processed_response = process_response_with_tooltips(full_response, st.session_state.reference_map)
-                response_placeholder.markdown(processed_response, unsafe_allow_html=True)
-        
-        # Armazenar a resposta completa no histórico
-        st.session_state.messages.append({"role": "assistant", "content": full_response}) 
+        # Gerar resposta em streaming com timeout aumentado
+        try:
+            for chunk in model.generate_content(
+                full_context,
+                stream=True,
+                generation_config={"timeout": 120000}  # 120 segundos
+            ):
+                if chunk.text:
+                    full_response += chunk.text
+                    # Atualizar a resposta com tooltips em tempo real
+                    processed_response = process_response_with_tooltips(full_response, st.session_state.reference_map)
+                    response_placeholder.markdown(processed_response, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Erro ao gerar resposta: {str(e)}")
+        else:
+            # Armazenar a resposta completa no histórico apenas se não houver erro
+            st.session_state.messages.append({"role": "assistant", "content": full_response}) 
