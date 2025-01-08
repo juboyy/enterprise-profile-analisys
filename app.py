@@ -5,6 +5,7 @@ from docx import Document
 import os
 import tempfile
 import re
+import io
 
 # Configuração da página Streamlit
 st.set_page_config(page_title="Análise de Perfil Comportamental", layout="wide")
@@ -81,93 +82,86 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Configuração da chave API do Gemini
-GOOGLE_API_KEY = "AIzaSyAhM39a9f_53uqs9qGXgEWMqDA_hgpetSU"
+GOOGLE_API_KEY = "AIzaSyDJXaH8-ujeF8mCLqGZHG7tGSXdwkXkofA"
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Configuração do modelo
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
-def extract_text_from_pdf(pdf_file):
-    pdf_reader = PdfReader(pdf_file)
-    text_by_page = []
-    for page_num, page in enumerate(pdf_reader.pages, 1):
-        text = page.extract_text()
-        if text.strip():
-            text_by_page.append({
-                'page': page_num,
-                'text': text
-            })
-    return text_by_page
-
-def extract_text_from_docx(docx_file):
-    doc = Document(docx_file)
-    text_by_section = []
-    current_section = ""
-    section_count = 0
+def extract_text_with_pages(file_content, file_type):
+    """Extrai texto mantendo referência das páginas"""
+    text_sections = []
     
-    for paragraph in doc.paragraphs:
-        current_section += paragraph.text + "\n"
-        if len(current_section) >= 500:
-            section_count += 1
-            text_by_section.append({
-                'page': f'Seção {section_count}',
-                'text': current_section
-            })
-            current_section = ""
-    
-    if current_section.strip():
-        section_count += 1
-        text_by_section.append({
-            'page': f'Seção {section_count}',
-            'text': current_section
-        })
-    
-    return text_by_section
-
-def extract_text_from_txt(txt_file):
-    content = txt_file.getvalue().decode('utf-8')
-    text_by_section = []
-    lines = content.split('\n')
-    current_section = ""
-    section_count = 0
-    
-    for line in lines:
-        current_section += line + "\n"
-        if len(current_section) >= 500:
-            section_count += 1
-            text_by_section.append({
-                'page': f'Seção {section_count}',
-                'text': current_section
-            })
-            current_section = ""
-    
-    if current_section.strip():
-        section_count += 1
-        text_by_section.append({
-            'page': f'Seção {section_count}',
-            'text': current_section
-        })
-    
-    return text_by_section
-
-def process_file(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-        tmp_file.write(uploaded_file.getvalue())
-        tmp_file_path = tmp_file.name
-
     try:
-        if uploaded_file.type == "application/pdf":
-            text_sections = extract_text_from_pdf(tmp_file_path)
-        elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            text_sections = extract_text_from_docx(tmp_file_path)
-        elif uploaded_file.type == "text/plain":
-            text_sections = extract_text_from_txt(uploaded_file)
+        if file_type == "application/pdf":
+            # Processar PDF
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PdfReader(pdf_file)
+            for page_num, page in enumerate(pdf_reader.pages, 1):
+                text = page.extract_text()
+                if text.strip():
+                    text_sections.append({
+                        'page': f'Página {page_num}',
+                        'text': text
+                    })
         else:
-            text_sections = [{'page': 'N/A', 'text': "Formato de arquivo não suportado"}]
-    finally:
-        os.unlink(tmp_file_path)
+            # Processar DOCX e TXT
+            if file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                doc = Document(io.BytesIO(file_content))
+                paragraphs = [p.text for p in doc.paragraphs]
+            else:  # text/plain
+                text_content = file_content.decode('utf-8')
+                paragraphs = text_content.split('\n')
+            
+            # Dividir em seções
+            current_section = ""
+            section_count = 0
+            
+            for paragraph in paragraphs:
+                current_section += paragraph + "\n"
+                if len(current_section) >= 500:
+                    section_count += 1
+                    text_sections.append({
+                        'page': f'Seção {section_count}',
+                        'text': current_section
+                    })
+                    current_section = ""
+            
+            if current_section.strip():
+                section_count += 1
+                text_sections.append({
+                    'page': f'Seção {section_count}',
+                    'text': current_section
+                })
+    
+    except Exception as e:
+        st.error(f"Erro ao extrair texto: {str(e)}")
+        return []
     
     return text_sections
+
+def process_file_with_api(uploaded_file):
+    """Processa arquivo usando a API do Gemini"""
+    try:
+        # Ler o conteúdo do arquivo
+        file_content = uploaded_file.getvalue()
+        
+        # Extrair texto com referências de páginas
+        text_sections = extract_text_with_pages(file_content, uploaded_file.type)
+        
+        # Criar objeto para o Gemini
+        file_obj = {
+            'mime_type': uploaded_file.type,
+            'data': file_content,
+            'sections': text_sections,
+            'name': uploaded_file.name
+        }
+        
+        return file_obj
+            
+    except Exception as e:
+        st.error(f"Erro ao processar arquivo: {str(e)}")
+        return None
 
 def process_response_with_tooltips(response_text, reference_map):
     pattern = r'\[(.*?), (Página/Seção \d+|Página \d+|Seção \d+)\]'
@@ -198,17 +192,32 @@ Use o conhecimento da metodologia fornecida para analisar o perfil do cliente.
 
 IMPORTANTE: Para cada informação ou conclusão relevante, cite a fonte usando o formato [Nome do Arquivo, Página/Seção X].
 
-Metodologia e Contexto de Análise:
-{system_context}
+====================
+METODOLOGIA E CONTEXTO:
+====================
+{methodology_context}
 
-Perfil do Cliente para Análise:
+====================
+PERFIL DO CLIENTE:
+====================
 {user_context}
 
-Solicitação de Análise:
+====================
+SOLICITAÇÃO DE ANÁLISE:
+====================
 {prompt}
 
+Por favor, forneça uma análise estruturada considerando:
+1. Principais características comportamentais (cite as páginas/seções que fundamentam cada característica)
+2. Pontos fortes em inteligência emocional (cite as páginas/seções que fundamentam cada ponto)
+3. Áreas para desenvolvimento (cite as páginas/seções que fundamentam cada área)
+4. Recomendações práticas (baseadas nas metodologias citadas)
 
-Lembre-se: SEMPRE cite as fontes específicas (arquivo e página/seção) que fundamentam cada ponto da sua análise.
+IMPORTANTE: 
+- Cite SEMPRE a fonte específica (arquivo e página/seção) que fundamenta cada ponto da sua análise
+- Use o formato [Nome do Arquivo, Página/Seção X] para todas as citações
+- Baseie suas conclusões apenas nos documentos fornecidos
+- Mantenha a análise objetiva e fundamentada
 """
 
 # Interface principal
@@ -220,11 +229,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "reference_map" not in st.session_state:
     st.session_state.reference_map = {}
-
-# Carregamento do contexto base (documentos de metodologia)
-if "system_context" not in st.session_state:
-    st.session_state.system_context = ""
-    st.info("Por favor, carregue os documentos de metodologia na barra lateral.")
+if "methodology_files" not in st.session_state:
+    st.session_state.methodology_files = []
 
 # Barra lateral para upload dos documentos de metodologia
 with st.sidebar:
@@ -244,18 +250,15 @@ with st.sidebar:
     
     if methodology_files:
         with st.spinner("Processando documentos de metodologia..."):
-            system_context = ""
-            reference_map = {}
+            processed_files = []
             for file in methodology_files:
-                text_sections = process_file(file)
-                for section in text_sections:
-                    ref_key = f"{file.name}, Página/Seção {section['page']}"
-                    reference_map[ref_key] = section['text']
-                    system_context += f"\n### Documento: {file.name}\n[{ref_key}]\n{section['text']}\n"
+                file_obj = process_file_with_api(file)
+                if file_obj:
+                    processed_files.append(file_obj)
             
-            st.session_state.system_context = system_context
-            st.session_state.reference_map.update(reference_map)
-            st.success("✅ Metodologia atualizada com sucesso!")
+            if processed_files:
+                st.session_state.methodology_files = processed_files
+                st.success("✅ Metodologia atualizada com sucesso!")
 
 # Upload do perfil do cliente
 st.header("📄 Perfil do Cliente")
@@ -264,13 +267,10 @@ st.markdown("Faça upload do documento contendo o perfil do cliente a ser analis
 user_file = st.file_uploader("Carregar Perfil do Cliente", type=["pdf", "docx", "txt"])
 if user_file:
     with st.spinner("Processando perfil do cliente..."):
-        text_sections = process_file(user_file)
-        user_context = f"### Documento: {user_file.name}\n"
-        for section in text_sections:
-            ref_key = f"{user_file.name}, Página/Seção {section['page']}"
-            st.session_state.reference_map[ref_key] = section['text']
-            user_context += f"\n[{ref_key}]\n{section['text']}\n"
-        st.success(f"✅ Perfil '{user_file.name}' processado com sucesso!")
+        user_file_obj = process_file_with_api(user_file)
+        if user_file_obj:
+            st.session_state.user_file = user_file_obj
+            st.success(f"✅ Perfil '{user_file.name}' processado com sucesso!")
 
 # Interface de chat
 st.header("💬 Análise e Insights")
@@ -286,32 +286,58 @@ if prompt := st.chat_input("Digite sua solicitação de análise..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Preparar o contexto completo para o Gemini usando o template
-    full_context = ANALYSIS_TEMPLATE.format(
-        system_context=st.session_state.system_context,
-        user_context=user_context if 'user_context' in locals() else 'Nenhum perfil carregado',
-        prompt=prompt
-    )
-
-    # Gerar resposta com streaming
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        full_response = ""
-        
-        # Gerar resposta em streaming com timeout aumentado
+    # Verificar se temos os arquivos necessários
+    if st.session_state.methodology_files and hasattr(st.session_state, 'user_file'):
         try:
-            for chunk in model.generate_content(
-                full_context,
-                stream=True,
-                generation_config={"timeout": 120000}  # 120 segundos
-            ):
-                if chunk.text:
-                    full_response += chunk.text
-                    # Atualizar a resposta com tooltips em tempo real
-                    processed_response = process_response_with_tooltips(full_response, st.session_state.reference_map)
-                    response_placeholder.markdown(processed_response, unsafe_allow_html=True)
+            # Preparar contexto estruturado
+            methodology_context = ""
+            for file_obj in st.session_state.methodology_files:
+                methodology_context += f"\n### {file_obj['name']}\n"
+                for section in file_obj['sections']:
+                    methodology_context += f"[{file_obj['name']}, {section['page']}]\n{section['text']}\n\n"
+            
+            user_context = f"\n### {st.session_state.user_file['name']}\n"
+            for section in st.session_state.user_file['sections']:
+                user_context += f"[{st.session_state.user_file['name']}, {section['page']}]\n{section['text']}\n\n"
+            
+            # Preparar prompt completo
+            full_prompt = ANALYSIS_TEMPLATE.format(
+                methodology_context=methodology_context,
+                user_context=user_context,
+                prompt=prompt
+            )
+            
+            # Gerar resposta com streaming
+            with st.chat_message("assistant"):
+                response_placeholder = st.empty()
+                full_response = ""
+                
+                # Incluir arquivos e prompt estruturado
+                message = [
+                    *[{'mime_type': f['mime_type'], 'data': f['data']} for f in st.session_state.methodology_files],
+                    {'mime_type': st.session_state.user_file['mime_type'], 'data': st.session_state.user_file['data']},
+                    full_prompt
+                ]
+                
+                # Gerar resposta
+                for chunk in model.generate_content(
+                    message,
+                    stream=True,
+                    generation_config={
+                        "max_output_tokens": 2000,
+                        "temperature": 0.5,
+                        "top_p": 0.8,
+                        "top_k": 40
+                    }
+                ):
+                    if chunk.text:
+                        full_response += chunk.text
+                        processed_response = process_response_with_tooltips(full_response, st.session_state.reference_map)
+                        response_placeholder.markdown(processed_response, unsafe_allow_html=True)
+                
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                
         except Exception as e:
             st.error(f"Erro ao gerar resposta: {str(e)}")
-        else:
-            # Armazenar a resposta completa no histórico apenas se não houver erro
-            st.session_state.messages.append({"role": "assistant", "content": full_response}) 
+    else:
+        st.warning("Por favor, carregue os documentos de metodologia e o perfil do cliente antes de fazer perguntas.") 
