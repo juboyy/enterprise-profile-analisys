@@ -187,13 +187,20 @@ def process_response_with_tooltips(response_text, reference_map):
 
 # Template para análise de perfil
 ANALYSIS_TEMPLATE = """
-Você é um analista especializado em comportamento empresarial e inteligência emocional.
+
+SOLICITAÇÃO DE ANÁLISE:
+====================
+{prompt}
+
+====================
+
+Você é um analista especializado em comportamento empresarial e inteligência emocional que vai utilizar os contextos abaixo para responder a pergunta do usuário.
 Use o conhecimento da metodologia fornecida para analisar o perfil do cliente.
 
 IMPORTANTE: Para cada informação ou conclusão relevante, cite a fonte usando o formato [Nome do Arquivo, Página/Seção X].
 
 ====================
-METODOLOGIA E CONTEXTO:
+METODOLOGIA E CONTEXTO - servirá para pautar o tipo de análise que será feito sobre o perfil do cliente com base na solitação de análise:
 ====================
 {methodology_context}
 
@@ -203,15 +210,9 @@ PERFIL DO CLIENTE:
 {user_context}
 
 ====================
-SOLICITAÇÃO DE ANÁLISE:
-====================
-{prompt}
 
-Por favor, forneça uma análise estruturada considerando a pergunta do usuário aplicada nesta estrutura de análise:
-1. Principais características comportamentais (cite as páginas/seções que fundamentam cada característica)
-2. Pontos fortes em inteligência emocional (cite as páginas/seções que fundamentam cada ponto)
-3. Áreas para desenvolvimento (cite as páginas/seções que fundamentam cada área)
-4. Recomendações práticas (baseadas nas metodologias citadas)
+
+Por favor, forneça uma análise estruturada considerando a pergunta do usuário aplicada em uma estrutura de análise inteligente que vem da metodologia
 
 IMPORTANTE: 
 - Cite SEMPRE a fonte específica (arquivo e página/seção) que fundamenta cada ponto da sua análise
