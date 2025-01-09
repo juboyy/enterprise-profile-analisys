@@ -82,7 +82,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Configuração da chave API do Gemini
-GOOGLE_API_KEY = "AIzaSyDJXaH8-ujeF8mCLqGZHG7tGSXdwkXkofA"
+GOOGLE_API_KEY = "AIzaSyAhM39a9f_53uqs9qGXgEWMqDA_hgpetSU"
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Configuração do modelo
@@ -207,7 +207,7 @@ SOLICITAÇÃO DE ANÁLISE:
 ====================
 {prompt}
 
-Por favor, forneça uma análise estruturada considerando:
+Por favor, forneça uma análise estruturada considerando a pergunta do usuário aplicada nesta estrutura de análise:
 1. Principais características comportamentais (cite as páginas/seções que fundamentam cada característica)
 2. Pontos fortes em inteligência emocional (cite as páginas/seções que fundamentam cada ponto)
 3. Áreas para desenvolvimento (cite as páginas/seções que fundamentam cada área)
@@ -312,20 +312,13 @@ if prompt := st.chat_input("Digite sua solicitação de análise..."):
                 response_placeholder = st.empty()
                 full_response = ""
                 
-                # Incluir arquivos e prompt estruturado
-                message = [
-                    *[{'mime_type': f['mime_type'], 'data': f['data']} for f in st.session_state.methodology_files],
-                    {'mime_type': st.session_state.user_file['mime_type'], 'data': st.session_state.user_file['data']},
-                    full_prompt
-                ]
-                
-                # Gerar resposta
+                # Gerar resposta usando apenas o texto estruturado
                 for chunk in model.generate_content(
-                    message,
+                    full_prompt,
                     stream=True,
                     generation_config={
-                        "max_output_tokens": 2000,
-                        "temperature": 0.5,
+                        "max_output_tokens": 8048,
+                        "temperature": 0.6,
                         "top_p": 0.8,
                         "top_k": 40
                     }
