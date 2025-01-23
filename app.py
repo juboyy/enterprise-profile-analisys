@@ -82,7 +82,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Configuração da chave API do Gemini
-GOOGLE_API_KEY = "AIzaSyAhM39a9f_53uqs9qGXgEWMqDA_hgpetSU"
+GOOGLE_API_KEY = ""
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Configuração do modelo
